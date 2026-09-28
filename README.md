@@ -1,5 +1,10 @@
 # Lykodex Discord Bot — Coopetorium test build
 
+> **Now lives in the main repo.** This code has been moved into
+> `Avrenthrad/lykodex` → `discord-bot/`, which upgrades the existing
+> Lykodex bot in place (same token, same Railway service). Make changes
+> there. This repo is only a sandbox copy.
+
 The Lykodex Discord add-on, tested on the Coopetorium server before it
 becomes the main Lykodex bot. It **replaces** the old Lykodex Presence
 Bot (`lykodex/discord-bot/`). Everything that bot did is included here,
