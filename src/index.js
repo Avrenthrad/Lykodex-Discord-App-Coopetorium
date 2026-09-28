@@ -1,7 +1,9 @@
 // Lykodex Discord Bot — Coopetorium test build.
 //
 // One always-on process that:
-//   • tracks presence (current_activity + console playtime)   presence.js
+//   • tracks presence: now playing, Xbox/PS/PC playtime,
+//     Spotify listening, Watching (opt-in)                     presence.js
+//   • tracks voice chat time → Social Mastery (opt-in)         voice.js
 //   • runs the daily Gaming + Overall Mastery refresh          mastery/
 //   • answers slash commands                                   commands/
 //   • posts Lykodex activity into a Discord channel            feed.js
@@ -13,6 +15,7 @@ import { config, assertConfig } from "./config.js";
 import { supabase } from "./supabase.js";
 import { commands, commandPayload } from "./commands/index.js";
 import { registerPresenceTracking, flushSessions } from "./presence.js";
+import { registerVoiceTracking, seedVoiceSessions, flushVoiceSessions } from "./voice.js";
 import { pollFeeds, announceLevelUp, invalidateMemberCache } from "./feed.js";
 import { runRefreshWithLevelUps } from "./mastery/levelUps.js";
 
@@ -26,6 +29,8 @@ const client = new Client({
     // or login fails with "Used disallowed intents".
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMembers,
+    // Not privileged — needed for voice chat time tracking.
+    GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.User, Partials.GuildMember],
 });
@@ -48,7 +53,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.GuildMemberAdd, (m) => invalidateMemberCache(m.guild.id));
 client.on(Events.GuildMemberRemove, (m) => invalidateMemberCache(m.guild.id));
 
-if (config.enablePresenceTracking) registerPresenceTracking(client);
+if (config.enablePresenceTracking) {
+  registerPresenceTracking(client);
+  registerVoiceTracking(client);
+}
 
 async function registerCommands() {
   const body = commandPayload();
@@ -84,6 +92,10 @@ client.once(Events.ClientReady, async () => {
     console.error("Slash command registration failed:", err);
   }
 
+  if (config.enablePresenceTracking) {
+    seedVoiceSessions(client).catch((err) => console.error("Voice session seeding failed:", err));
+  }
+
   setInterval(() => pollFeeds(client), config.feedPollMs);
   pollFeeds(client);
 
@@ -97,9 +109,10 @@ client.once(Events.ClientReady, async () => {
 client.on(Events.Error, (err) => console.error("Discord client error:", err));
 
 async function shutdown() {
-  console.log("Shutting down — closing open play sessions…");
+  console.log("Shutting down — closing open play, media and voice sessions…");
   try {
     await flushSessions();
+    await flushVoiceSessions();
   } finally {
     client.destroy();
     process.exit(0);

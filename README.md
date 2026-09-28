@@ -17,8 +17,29 @@ settings table.
 | **Slash commands** | `/profile`, `/mastery`, `/collection`, `/nowplaying`, `/leaderboard` |
 | **Activity feed** | Posts Lykodex activity to a channel: achievements, 100% completions, finished games, wishlist adds, new TCG cards, Mastery level-ups, and (optionally) "started playing X". Bulk events are batched into one line per person. |
 | **Leaderboards** | `/leaderboard board:` Overall Mastery · Gaming Mastery · Console Playtime · 100% Completions · Library Size |
-| **Presence tracking** *(ported)* | Live "currently playing" → `current_activity`; Xbox/PS session time → `platform_playtime` |
+| **Presence tracking** *(opt-in)* | Live "currently playing" → `current_activity`; Xbox, PlayStation and non-Steam PC session time → `platform_playtime` |
+| **Voice chat time** *(opt-in)* | Voice sessions → `discord_voice_sessions` → new **Social** College in Overall Mastery |
+| **Spotify / Watching** *(opt-in)* | Listening and Watching sessions → `discord_media_sessions` → **Entertainment** Mastery |
 | **Daily Mastery refresh** *(ported)* | Recomputes Gaming + Overall Mastery for every profile every 24h |
+
+### Tracking is opt-in
+
+The bot records nothing about a person (not even live "now playing")
+until they turn on **Discord activity tracking** in Lykodex (Account
+Settings → Privacy, `profiles.discord_tracking_enabled`). Turning it
+off takes effect within about 5 minutes. Nothing can be backfilled.
+
+| What | Where it goes | Counts toward |
+|---|---|---|
+| Xbox / PlayStation playtime | `platform_playtime` | (recorded) |
+| PC playtime, excluding games in your Steam library | `platform_playtime` (`pc`) | (recorded) |
+| Voice chat, only when not deafened, not AFK, and with someone else | `discord_voice_sessions` | **Social**: 10 raw per hour, 100h ≈ 1000 |
+| Spotify listening (skips under 30s ignored) | `discord_media_sessions` | **Entertainment**: +1 per hour |
+| Watching (e.g. Crunchyroll) | `discord_media_sessions` | **Entertainment**: +4 per hour |
+
+Totals come from the `discord_activity_totals` view. Weights live in
+`src/mastery/overallMastery.js` (kept in sync with the app's
+`src/lib/overallMastery.js`).
 
 ### Privacy rule (applies everywhere)
 
@@ -42,7 +63,7 @@ member list.
 | `/mastery [user]` | anyone | Overall + Gaming Mastery with XP bars and breakdown |
 | `/collection [user]` | anyone | Counts across Gaming, TCG, Entertainment, Collectibles |
 | `/nowplaying` | anyone | Who in the server is playing what right now |
-| `/leaderboard [board]` | anyone | Server leaderboard |
+| `/leaderboard [board]` | anyone | Server leaderboard (incl. Voice Chat Time) |
 | `/lykodex-setup feed channel:#x [now_playing]` | Manage Server | Turn on the activity feed in a channel |
 | `/lykodex-setup feed-off` | Manage Server | Pause the feed |
 | `/lykodex-setup status` | Manage Server | Show settings |
@@ -59,14 +80,21 @@ with Discord"), or create a separate test app.
 3. Under **Privileged Gateway Intents**, turn on **Presence Intent** AND
    **Server Members Intent**. If either is off, login fails with "Used
    disallowed intents".
+   Voice tracking also uses the Voice States intent, which isn't
+   privileged, so there's nothing to toggle for it.
 4. **OAuth2 → URL Generator**: scopes `bot` + `applications.commands`;
    permissions **View Channels**, **Send Messages**, **Embed Links**.
    Open the URL and add the bot to Coopetorium.
 
 ### 2. Database
 
-Run `sql/001_discord_guild_settings.sql` once in the Supabase SQL editor.
-It's additive and safe: it adds one new table and one index.
+Run these once, in order, in the Supabase SQL editor:
+
+1. `sql/001_discord_guild_settings.sql`: feed settings table and one index.
+2. `sql/002_discord_activity_tracking.sql`: the opt-in column, voice and
+   media session tables, the `pc` playtime platform, and the totals view.
+
+Both are additive and safe to re-run.
 
 ### 3. Env
 
@@ -104,6 +132,10 @@ jobs while you try out commands and the feed.
 
 When ready to switch:
 
+**Heads-up:** the old bot tracked every linked account. This one only
+tracks people who turn on **Discord activity tracking**, so after cutover
+anyone who hasn't opted in stops getting now-playing and console hours.
+
 1. Stop the old Railway service (`lykodex/discord-bot`).
 2. Remove those two `false` flags here (both default to on) and redeploy.
 3. Once it's stable, delete `lykodex/discord-bot/`.
@@ -111,7 +143,7 @@ When ready to switch:
 ## Development
 
 ```
-npm test          # unit tests (formatting, batching, privacy, level-ups, command JSON)
+npm test          # unit tests (formatting, batching, privacy, level-ups, voice/media tracking, command JSON)
 ```
 
 ```
@@ -124,7 +156,9 @@ src/
   format.js           pure formatting / batching / ranking helpers
   settings.js         discord_guild_settings access
   feed.js             activity feed poller + now-playing / level-up posts
-  presence.js         presence + playtime tracking (ported)
+  tracking.js         opt-in gate + Steam-library exclusion for PC playtime
+  presence.js         now playing, playtime, Spotify/Watching sessions
+  voice.js            voice chat sessions → Social Mastery
   mastery/            scoring math + daily refresh (ported) + level-up diff
   commands/           one file per slash command
 sql/                  schema additions for the shared Lykodex database

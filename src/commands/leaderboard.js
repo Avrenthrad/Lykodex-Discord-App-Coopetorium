@@ -24,9 +24,9 @@ const BOARDS = {
     show: (e) => `Lv ${e.level ?? 0} · ${formatNumber(e.value, 1)}`,
   },
   playtime: {
-    label: "Console Playtime (tracked)",
+    label: "Tracked Playtime",
     emoji: "⏱️",
-    note: "Xbox/PlayStation hours tracked via Discord since each person linked.",
+    note: "Xbox, PlayStation and non-Steam PC hours tracked via Discord.",
     async values(profiles) {
       const { data, error } = await supabase
         .from("platform_playtime")
@@ -36,6 +36,21 @@ const BOARDS = {
       const totals = new Map();
       for (const r of data || []) totals.set(r.user_id, (totals.get(r.user_id) || 0) + (r.total_minutes || 0));
       return profiles.map((p) => ({ userId: p.id, value: totals.get(p.id) || 0 }));
+    },
+    show: (e) => formatMinutes(e.value),
+  },
+  voice: {
+    label: "Voice Chat Time",
+    emoji: "🎙️",
+    note: "Opted-in members only. Counts time with others, not deafened or AFK.",
+    async values(profiles) {
+      const { data, error } = await supabase
+        .from("discord_activity_totals")
+        .select("user_id, voice_active_seconds")
+        .in("user_id", profiles.map((p) => p.id));
+      if (error) throw error;
+      const byId = new Map((data || []).map((r) => [r.user_id, Number(r.voice_active_seconds) || 0]));
+      return profiles.map((p) => ({ userId: p.id, value: (byId.get(p.id) || 0) / 60 }));
     },
     show: (e) => formatMinutes(e.value),
   },

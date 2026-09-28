@@ -9,6 +9,7 @@ const COLLEGE_LABELS = {
   entertainment: "🎬 Entertainment",
   collectibles: "🧸 Collectibles",
   tabletop: "🎲 Tabletop",
+  social: "🎙️ Social",
 };
 const PLATFORM_LABELS = { xbox: "Xbox", playstation: "PlayStation", steam: "Steam" };
 
